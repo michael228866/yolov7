@@ -14,6 +14,37 @@ reports.
 
 ---
 
+---
+
+## 0. 給同事：git clone 就能跑
+
+**前置**：Windows 10/11 + **NVIDIA GPU 驅動**。Python 不用先裝（setup.bat 會處理）。
+
+```powershell
+git clone https://github.com/michael228866/yolov7.git
+cd yolov7
+.\setup.bat        # 雙擊也可以，第一次跑大約 5-10 分鐘
+.\start.bat        # 之後每次雙擊這個就好
+```
+
+`setup.bat` 自動做的事：
+1. 沒 Python 3.10 → 用 winget 裝
+2. 建虛擬環境 `.venv\`
+3. 裝 PyTorch (CUDA 11.8) + ultralytics + supervision
+4. 從 GitHub 下載 `yolov8_head_medium.pt` 跟 `yolov8_head_nano.pt`
+
+| 雙擊 | 做什麼 |
+|---|---|
+| `setup.bat` | **僅第一次**：裝環境、下載權重 |
+| `start.bat` | 啟動頭部計數器（webcam） |
+| `query.bat` | 看今天 / 指定日期的人流報表 |
+
+如果 winget 不能用（極舊的 Win 10）：去 [App Installer](https://apps.microsoft.com/detail/9NBLGGH4NNS1) 裝，或手動裝 [Python 3.10.11](https://www.python.org/downloads/release/python-31011/)（勾選 *Add python.exe to PATH*）。
+
+如果同事完全不想裝任何東西，改用 `make_release.py` 打包出來的完整 `release/` 資料夾（見第 6 節）。
+
+---
+
 ## 1. 開發機環境
 
 需要 **conda** 跟 **NVIDIA GPU + 驅動**。
@@ -204,10 +235,14 @@ yolov7/
 ├─ count_inout_head.py     主程式
 ├─ db.py                   SQLite schema + 寫入 helper
 ├─ query_daily.py          CLI 報表工具
-├─ make_release.py         打包腳本
+├─ make_release.py         打包腳本（給沒裝 Python 的同事用）
+├─ requirements.txt        pip 套件清單（setup.bat 會用到）
+├─ setup.bat               同事第一次跑的安裝腳本
+├─ start.bat               啟動計數器
+├─ query.bat               看報表
 ├─ counter.db              SQLite 資料庫（自動建立、不進 git）
-├─ yolov8_head_medium.pt   權重（curl 下載、不進 git）
-├─ yolov8_head_nano.pt     權重（curl 下載、不進 git）
+├─ yolov8_head_medium.pt   權重（setup.bat 下載、不進 git）
+├─ yolov8_head_nano.pt     權重（setup.bat 下載、不進 git）
 ├─ README.md
 └─ .gitignore
 ```

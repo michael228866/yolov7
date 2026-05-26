@@ -99,11 +99,17 @@ call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
 if errorlevel 1 goto :fail
 
-REM ---------- 5. Install dependencies ----------
-echo [5/6] Installing PyTorch (CUDA 11.8) and other packages...
-echo       Downloads ~2.5 GB the first time. Please wait.
-pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 ^
-    --index-url https://download.pytorch.org/whl/cu118
+REM ---------- 5. Install dependencies (CUDA or CPU PyTorch based on GPU) ----------
+echo [5/6] Detecting NVIDIA GPU...
+nvidia-smi >nul 2>&1
+if %errorlevel% equ 0 (
+    echo       GPU found. Installing PyTorch CUDA 11.8 ^(~2.5 GB^)...
+    pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 ^
+        --index-url https://download.pytorch.org/whl/cu118
+) else (
+    echo       No NVIDIA GPU. Installing CPU-only PyTorch ^(~200 MB, much smaller^)...
+    pip install torch==2.0.1 torchvision==0.15.2
+)
 if errorlevel 1 goto :fail
 pip install -r requirements.txt
 if errorlevel 1 goto :fail

@@ -6,7 +6,7 @@
 
 ## 快速使用
 
-**要求**：Windows 10/11 + NVIDIA GPU
+**要求**：Windows 10/11。有 NVIDIA GPU 跑得最快，CPU 也能跑（會慢，約 5-10 FPS）。
 
 ```powershell
 git clone https://github.com/michael228866/yolov7.git

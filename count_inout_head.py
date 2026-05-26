@@ -21,6 +21,7 @@ import atexit
 
 import cv2
 import supervision as sv
+import torch
 from ultralytics import YOLO
 
 import db
@@ -132,8 +133,12 @@ def main(opt):
     print(f'DB session: {session_id}')
 
     model = YOLO(opt.weights)
-    if opt.device != 'cpu':
-        model.to(f'cuda:{opt.device}')
+    device = opt.device
+    if device != 'cpu' and not torch.cuda.is_available():
+        print('CUDA not available - falling back to CPU (will be slow).')
+        device = 'cpu'
+    if device != 'cpu':
+        model.to(f'cuda:{device}')
 
     cap = cv2.VideoCapture(parse_source(opt.source))
     if not cap.isOpened():

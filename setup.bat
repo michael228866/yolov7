@@ -5,6 +5,11 @@ REM Run this ONCE after git clone. Then use start.bat / query.bat.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+set "PY_VER=3.10.11"
+set "PY_URL=https://www.python.org/ftp/python/%PY_VER%/python-%PY_VER%-amd64.exe"
+set "PY_INSTALLER=%TEMP%\python-%PY_VER%-amd64.exe"
+set "PY_DIR=%LOCALAPPDATA%\Programs\Python\Python310"
+
 echo.
 echo ============================================================
 echo  Head Counter - First-time Setup
@@ -16,61 +21,62 @@ echo [1/5] Looking for Python 3.10...
 set "PY310=py -3.10"
 %PY310% --version >nul 2>&1
 if %errorlevel% equ 0 (
-    echo       Found.
+    echo       Found via "py -3.10".
     goto :have_python
 )
 
-echo       Not installed. Attempting winget install (silent)...
-where winget >nul 2>&1
+if exist "%PY_DIR%\python.exe" (
+    set "PY310=%PY_DIR%\python.exe"
+    echo       Found at: !PY310!
+    goto :have_python
+)
+
+echo       Not installed. Downloading official installer from python.org...
+echo       URL: %PY_URL%
+curl -L --fail -o "%PY_INSTALLER%" "%PY_URL%"
 if errorlevel 1 (
     echo.
-    echo ERROR: winget is not available on this PC.
-    echo You can either:
-    echo   a^) Install "App Installer" from the Microsoft Store, then re-run setup.bat
-    echo   b^) Install Python 3.10 manually:
-    echo      https://www.python.org/downloads/release/python-31011/
-    echo      ^(check "Add python.exe to PATH" during install^)
-    echo.
+    echo ERROR: Could not download Python installer.
+    echo Check your internet connection, or download manually from:
+    echo   %PY_URL%
     pause
     exit /b 1
 )
 
-winget install --id Python.Python.3.10 -e ^
-    --silent ^
-    --accept-package-agreements ^
-    --accept-source-agreements ^
-    --scope user
+echo       Installing Python %PY_VER% silently (takes ~30 seconds)...
+"%PY_INSTALLER%" /quiet ^
+    InstallAllUsers=0 ^
+    PrependPath=1 ^
+    Include_launcher=1 ^
+    Include_test=0 ^
+    Include_doc=0 ^
+    Include_dev=0 ^
+    Shortcuts=0
 if errorlevel 1 (
     echo.
-    echo winget install failed. Install Python 3.10 manually:
-    echo   https://www.python.org/downloads/release/python-31011/
+    echo ERROR: Python install failed. Try running this file as Administrator,
+    echo or install manually from: %PY_URL%
     pause
     exit /b 1
 )
+del /q "%PY_INSTALLER%" 2>nul
 
-REM PATH won't refresh in this shell. Try py launcher first, fall back to explicit paths.
-%PY310% --version >nul 2>&1
-if %errorlevel% equ 0 goto :have_python
-
-set "PY310=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
-if exist "!PY310!" goto :have_python
-set "PY310=%ProgramFiles%\Python310\python.exe"
-if exist "!PY310!" goto :have_python
-
-echo.
-echo Python 3.10 was installed but this shell hasn't picked it up.
-echo Please CLOSE this window and DOUBLE-CLICK setup.bat AGAIN.
-echo.
-pause
-exit /b 0
+if not exist "%PY_DIR%\python.exe" (
+    echo.
+    echo Python install reported success but python.exe not found at:
+    echo   %PY_DIR%\python.exe
+    pause
+    exit /b 1
+)
+set "PY310=%PY_DIR%\python.exe"
+echo       Installed at: !PY310!
 
 :have_python
-echo       Using: !PY310!
 
 REM ---------- 2. Create venv ----------
 echo [2/5] Creating virtual environment .venv\ ...
 if not exist .venv (
-    !PY310! -m venv .venv
+    "!PY310!" -m venv .venv
     if errorlevel 1 goto :fail
 )
 

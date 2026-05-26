@@ -18,16 +18,19 @@ echo.
 
 REM ---------- 1. Ensure Python 3.10 is available ----------
 echo [1/6] Looking for Python 3.10...
-set "PY310=py -3.10"
-%PY310% --version >nul 2>&1
-if %errorlevel% equ 0 (
-    echo       Found via "py -3.10".
-    goto :have_python
-)
 
+REM Try the explicit user-install path first
 if exist "%PY_DIR%\python.exe" (
     set "PY310=%PY_DIR%\python.exe"
     echo       Found at: !PY310!
+    goto :have_python
+)
+
+REM Try the py launcher and resolve it to an actual python.exe path
+py -3.10 --version >nul 2>&1
+if %errorlevel% equ 0 (
+    for /f "delims=" %%i in ('py -3.10 -c "import sys;print(sys.executable)"') do set "PY310=%%i"
+    echo       Found via py launcher: !PY310!
     goto :have_python
 )
 

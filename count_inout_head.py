@@ -58,19 +58,32 @@ def parse_line(spec, frame_w, frame_h):
 def pick_line_interactively(first_frame):
     """Show first frame; user clicks 2 points to define the counting line."""
     pts = []
-    preview = first_frame.copy()
-    win = 'Click 2 points to draw counting line (then any key to start)'
+    base = first_frame.copy()
+    win = 'Draw counting line - CLICK 2 POINTS, then press any key'
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+
+    def render():
+        img = base.copy()
+        # Big, obvious banner on top so the user understands the screen is interactive.
+        cv2.rectangle(img, (0, 0), (img.shape[1], 80), (0, 0, 0), -1)
+        msg = f'CLICK 2 POINTS to draw the counting line   ({len(pts)}/2)'
+        cv2.putText(img, msg, (16, 50), cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0, (0, 255, 255), 2)
+        if len(pts) == 2:
+            cv2.putText(img, 'Press any key to START', (16, 75),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        for p in pts:
+            cv2.circle(img, p, 8, (0, 255, 255), -1)
+        if len(pts) == 2:
+            cv2.line(img, pts[0], pts[1], (0, 255, 255), 3)
+        cv2.imshow(win, img)
 
     def on_mouse(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN and len(pts) < 2:
             pts.append((x, y))
-            cv2.circle(preview, (x, y), 6, (0, 255, 255), -1)
-            if len(pts) == 2:
-                cv2.line(preview, pts[0], pts[1], (0, 255, 255), 2)
-            cv2.imshow(win, preview)
+            render()
 
-    cv2.imshow(win, preview)
+    render()
     cv2.setMouseCallback(win, on_mouse)
     while len(pts) < 2:
         if cv2.waitKey(20) == 27:
@@ -151,8 +164,14 @@ def main(opt):
         writer = cv2.VideoWriter(opt.save, cv2.VideoWriter_fourcc(*'mp4v'),
                                  fps_out, (fw, fh))
 
-    # rewind so the first real frame isn't lost to the line-picker
-    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    # For video files: rewind so the first real frame isn't lost to the picker.
+    # For webcams / RTSP streams: cap.set(POS_FRAMES, 0) can stall the capture,
+    # and rewind isn't meaningful for a live stream anyway — just keep reading.
+    is_stream = opt.source.isdigit() or opt.source.lower().startswith(
+        ('rtsp://', 'rtmp://', 'http://', 'https://')
+    )
+    if not is_stream:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     win = 'Head In/Out Counter (q to quit, r to reset)'
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)

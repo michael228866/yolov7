@@ -4,5 +4,9 @@
 #         --index-url https://download.pytorch.org/whl/cu118
 #     pip install -r requirements.txt
 
+# numpy must stay on 1.x — torch 2.0.1+cu118 was built against numpy 1.x;
+# pulling numpy>=2 breaks runtime with "_ARRAY_API not found".
+numpy>=1.23,<2
+
 ultralytics>=8.0
 supervision>=0.28

@@ -17,7 +17,7 @@ echo ============================================================
 echo.
 
 REM ---------- 1. Ensure Python 3.10 is available ----------
-echo [1/5] Looking for Python 3.10...
+echo [1/6] Looking for Python 3.10...
 set "PY310=py -3.10"
 %PY310% --version >nul 2>&1
 if %errorlevel% equ 0 (
@@ -73,21 +73,34 @@ echo       Installed at: !PY310!
 
 :have_python
 
-REM ---------- 2. Create venv ----------
-echo [2/5] Creating virtual environment .venv\ ...
+REM ---------- 2. Ensure Visual C++ Redistributable (PyTorch needs c10.dll deps) ----------
+echo [2/6] Ensuring Visual C++ Redistributable is installed...
+set "VC_INSTALLER=%TEMP%\vc_redist.x64.exe"
+curl -L --fail -o "%VC_INSTALLER%" https://aka.ms/vs/17/release/vc_redist.x64.exe
+if errorlevel 1 (
+    echo       WARNING: Could not download VC++ Redistributable. Continuing.
+) else (
+    "%VC_INSTALLER%" /install /quiet /norestart
+    REM exit 0 = installed, 1638 = newer present, 3010 = installed but restart pending
+    del /q "%VC_INSTALLER%" 2>nul
+    echo       Done.
+)
+
+REM ---------- 3. Create venv ----------
+echo [3/6] Creating virtual environment .venv\ ...
 if not exist .venv (
     "!PY310!" -m venv .venv
     if errorlevel 1 goto :fail
 )
 
-REM ---------- 3. Activate + upgrade pip ----------
-echo [3/5] Activating venv and upgrading pip...
+REM ---------- 4. Activate + upgrade pip ----------
+echo [4/6] Activating venv and upgrading pip...
 call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
 if errorlevel 1 goto :fail
 
-REM ---------- 4. Install dependencies ----------
-echo [4/5] Installing PyTorch (CUDA 11.8) and other packages...
+REM ---------- 5. Install dependencies ----------
+echo [5/6] Installing PyTorch (CUDA 11.8) and other packages...
 echo       Downloads ~2.5 GB the first time. Please wait.
 pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 ^
     --index-url https://download.pytorch.org/whl/cu118
@@ -95,8 +108,8 @@ if errorlevel 1 goto :fail
 pip install -r requirements.txt
 if errorlevel 1 goto :fail
 
-REM ---------- 5. Download head-detection weights ----------
-echo [5/5] Downloading head-detection weights...
+REM ---------- 6. Download head-detection weights ----------
+echo [6/6] Downloading head-detection weights...
 if not exist yolov8_head_medium.pt (
     curl -L -o yolov8_head_medium.pt ^
         https://github.com/Abcfsa/YOLOv8_head_detector/raw/main/medium.pt

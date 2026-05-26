@@ -1,0 +1,35 @@
+# Build / release artifacts
+release/
+*.tar.gz
+
+# Database (user data, not source)
+counter.db
+counter.db-journal
+counter.db-wal
+counter.db-shm
+
+# Model weights — downloaded separately (see README)
+*.pt
+*.onnx
+*.engine
+*.weights
+
+# Output media
+*.mp4
+*.avi
+*.mov
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

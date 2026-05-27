@@ -13,6 +13,11 @@ counter.db-shm
 *.onnx
 *.engine
 *.weights
+*.caffemodel
+*.prototxt
+
+# Runtime log
+events.log
 
 # Output media
 *.mp4

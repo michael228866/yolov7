@@ -18,6 +18,8 @@ Keys (in viewer window):
 
 import argparse
 import atexit
+import logging
+import sys
 from pathlib import Path
 
 import cv2
@@ -26,7 +28,9 @@ import supervision as sv
 import torch
 from ultralytics import YOLO
 
+import api
 import db
+import gender
 
 
 # -------- helpers --------------------------------------------------------------
@@ -126,6 +130,31 @@ def build_line_zone(p1, p2, anchor):
     )
 
 
+LOG_PATH = Path(__file__).resolve().parent / 'events.log'
+
+
+def setup_logging():
+    """Send log lines to both the console and events.log (timestamped)."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[logging.StreamHandler(sys.stdout),
+                  logging.FileHandler(LOG_PATH, encoding='utf-8')],
+    )
+
+
+def crop_box(frame, xyxy):
+    """Return the frame region inside `xyxy` (clamped to bounds), or None."""
+    h, w = frame.shape[:2]
+    x1, y1, x2, y2 = (int(v) for v in xyxy)
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return frame[y1:y2, x1:x2]
+
+
 def to_onnx(pt_path, imgsz):
     """Return a cached ONNX build of `pt_path` at `imgsz`, exporting once if needed.
 
@@ -150,6 +179,7 @@ def to_onnx(pt_path, imgsz):
 # -------- main ----------------------------------------------------------------
 
 def main(opt):
+    setup_logging()
     db.init_db()
     session_id = db.start_session(source=opt.source, weights=opt.weights)
     atexit.register(db.end_session, session_id)
@@ -230,6 +260,11 @@ def main(opt):
     win = 'Head In/Out Counter (q to quit, r to reset)'
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
 
+    notifier = api.EventNotifier(opt.api_url)
+    if notifier.enabled:
+        logging.info(f'REST notify ON -> {opt.api_url}  (zone={opt.zone})')
+    gender_clf = gender.GenderClassifier() if notifier.enabled else None
+
     frame_idx = 0
     seen_ids = set()
 
@@ -261,12 +296,22 @@ def main(opt):
 
             ts = db.now_iso()
             rows = []
-            for i, fired in enumerate(crossed_in):
-                if fired:
-                    rows.append((ts, 'in',  int(detections.tracker_id[i]), session_id))
-            for i, fired in enumerate(crossed_out):
-                if fired:
-                    rows.append((ts, 'out', int(detections.tracker_id[i]), session_id))
+            for direction, fired_arr in (('in', crossed_in), ('out', crossed_out)):
+                for i, fired in enumerate(fired_arr):
+                    if not fired:
+                        continue
+                    tid = int(detections.tracker_id[i])
+                    rows.append((ts, direction, tid, session_id))
+                    if notifier.enabled:
+                        g = gender_clf.classify(crop_box(frame, detections.xyxy[i]))
+                        logging.info(f'[CROSS] {direction.upper()} zone={opt.zone} gender={g} id={tid} -> POST {opt.api_url}')
+                        notifier.post({
+                            'direction': direction,
+                            'zone': opt.zone,
+                            'gender': g,
+                            'ts': ts,
+                            'track_id': tid,
+                        })
             db.log_events(rows)
 
         # Build labels (#ID conf) when tracked, else (head conf)
@@ -341,6 +386,10 @@ def build_parser():
                    help='low-spec preset: nano model @ img-size 320 (faster, less accurate)')
     p.add_argument('--robust-track', action='store_true',
                    help='harder-to-lose tracking for fast movers (tuned ByteTrack + lower conf)')
+    p.add_argument('--api-url', type=str, default='',
+                   help='POST a JSON crossing event {direction,zone,gender,...} to this URL (empty = off)')
+    p.add_argument('--zone', type=str, default='default',
+                   help='zone label included in the API event body')
     p.add_argument('--anchor', choices=['center', 'bottom', 'top', 'corners'],
                    default='center',
                    help='which bbox point triggers crossing (default: center)')

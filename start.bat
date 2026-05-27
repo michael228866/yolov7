@@ -7,5 +7,5 @@ if not exist .venv\Scripts\activate.bat (
     exit /b 1
 )
 call .venv\Scripts\activate.bat
-python count_inout_head.py --lite %*
+python count_inout_head.py --lite --api-url http://網址/endpoint --zone hualian-c %*
 pause

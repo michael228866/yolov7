@@ -17,3 +17,7 @@ supervision>=0.28
 # attempting AutoUpdate" message).
 onnx>=1.14
 onnxruntime>=1.15
+
+# REST notifications on each crossing (--api-url). The gender model uses
+# OpenCV's bundled DNN module, so it needs no extra package here.
+requests>=2.28

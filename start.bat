@@ -7,5 +7,5 @@ if not exist .venv\Scripts\activate.bat (
     exit /b 1
 )
 call .venv\Scripts\activate.bat
-python count_inout_head.py %*
+python count_inout_head.py --lite %*
 pause

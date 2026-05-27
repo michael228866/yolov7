@@ -20,6 +20,7 @@ import argparse
 import atexit
 
 import cv2
+import numpy as np
 import supervision as sv
 import torch
 from ultralytics import YOLO
@@ -132,6 +133,15 @@ def main(opt):
     atexit.register(db.end_session, session_id)
     print(f'DB session: {session_id}')
 
+    # Low-spec preset: switch to the nano model at a smaller input size,
+    # unless the user explicitly chose their own --weights / --img-size.
+    if opt.lite:
+        if opt.weights == 'yolov8_head_medium.pt':
+            opt.weights = 'yolov8_head_nano.pt'
+        if opt.img_size == 640:
+            opt.img_size = 320
+        print(f'Lite mode: {opt.weights} @ img-size {opt.img_size}')
+
     model = YOLO(opt.weights)
     device = opt.device
     if device != 'cpu' and not torch.cuda.is_available():
@@ -143,6 +153,9 @@ def main(opt):
     cap = cv2.VideoCapture(parse_source(opt.source))
     if not cap.isOpened():
         raise SystemExit(f"Cannot open source: {opt.source}")
+    # On slow machines the capture buffer backs up with stale frames and the
+    # view lags behind reality; keep only the newest frame so it stays live.
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     ok, first = cap.read()
     if not ok:
@@ -226,22 +239,26 @@ def main(opt):
         else:
             labels = [f"head {conf:.2f}" for conf in detections.confidence]
 
+        # Pick the canvas: the real camera frame, or (--blank) a black
+        # background so only the boxes / line / traces show.
+        canvas = np.zeros_like(frame) if opt.blank else frame
+
         # Draw annotations
         if detections.tracker_id is not None and len(detections) > 0:
-            frame = trace_annot.annotate(frame, detections=detections)
-        frame = box_annot.annotate(frame, detections=detections)
+            canvas = trace_annot.annotate(canvas, detections=detections)
+        canvas = box_annot.annotate(canvas, detections=detections)
         if len(detections) > 0:
-            frame = label_annot.annotate(frame, detections=detections, labels=labels)
-        frame = line_annot.annotate(frame, line_counter=line_zone)
+            canvas = label_annot.annotate(canvas, detections=detections, labels=labels)
+        canvas = line_annot.annotate(canvas, line_counter=line_zone)
 
         # On-screen overlay: only TOTAL in top-left
-        cv2.rectangle(frame, (0, 0), (300, 70), (0, 0, 0), -1)
-        cv2.putText(frame, f'TOTAL : {line_zone.in_count}', (12, 50),
+        cv2.rectangle(canvas, (0, 0), (300, 70), (0, 0, 0), -1)
+        cv2.putText(canvas, f'TOTAL : {line_zone.in_count}', (12, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 255), 3)
 
-        cv2.imshow(win, frame)
+        cv2.imshow(win, canvas)
         if writer is not None:
-            writer.write(frame)
+            writer.write(canvas)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q') or key == 27:
@@ -281,6 +298,10 @@ def build_parser():
     p.add_argument('--line', type=str, default='',
                    help="'x1,y1,x2,y2', or 'h' / 'v'. Empty = click 2 points on first frame.")
     p.add_argument('--flip', action='store_true', help='swap IN/OUT direction')
+    p.add_argument('--blank', action='store_true',
+                   help='hide the camera image; draw boxes/line on a black background')
+    p.add_argument('--lite', action='store_true',
+                   help='low-spec preset: nano model @ img-size 320 (faster, less accurate)')
     p.add_argument('--anchor', choices=['center', 'bottom', 'top', 'corners'],
                    default='center',
                    help='which bbox point triggers crossing (default: center)')

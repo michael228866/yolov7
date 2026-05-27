@@ -20,6 +20,8 @@ import argparse
 import atexit
 import logging
 import sys
+import time
+import uuid
 from pathlib import Path
 
 import cv2
@@ -31,6 +33,10 @@ from ultralytics import YOLO
 import api
 import db
 import gender
+
+
+# API payload uses friendlier direction labels; the DB stays 'in'/'out'.
+API_DIRECTION = {'in': 'enter', 'out': 'exit'}
 
 
 # -------- helpers --------------------------------------------------------------
@@ -155,6 +161,26 @@ def crop_box(frame, xyxy):
     return frame[y1:y2, x1:x2]
 
 
+def build_event(direction, gender_label, location, fps):
+    """Build the JSON body the ingest endpoint expects (one person per event)."""
+    return {
+        'ts': int(time.time() * 1000),   # epoch ms; use int(time.time()) for seconds
+        'locationId': location,
+        'direction': API_DIRECTION[direction],
+        'demographics': {
+            'male':      1 if gender_label == 'Male' else 0,
+            'female':    1 if gender_label == 'Female' else 0,
+            'age0_17':   0,   # no age model yet — always 0
+            'age18_35':  0,
+            'age36_55':  0,
+            'age56plus': 0,
+            'unknown':   1 if gender_label not in ('Male', 'Female') else 0,
+        },
+        'eventId': uuid.uuid4().hex,
+        'fps': round(fps, 1),
+    }
+
+
 def to_onnx(pt_path, imgsz):
     """Return a cached ONNX build of `pt_path` at `imgsz`, exporting once if needed.
 
@@ -267,6 +293,7 @@ def main(opt):
 
     frame_idx = 0
     seen_ids = set()
+    start_time = time.time()
 
     while True:
         ok, frame = cap.read()
@@ -304,14 +331,9 @@ def main(opt):
                     rows.append((ts, direction, tid, session_id))
                     if notifier.enabled:
                         g = gender_clf.classify(crop_box(frame, detections.xyxy[i]))
-                        logging.info(f'[CROSS] {direction.upper()} zone={opt.zone} gender={g} id={tid} -> POST {opt.api_url}')
-                        notifier.post({
-                            'direction': direction,
-                            'zone': opt.zone,
-                            'gender': g,
-                            'ts': ts,
-                            'track_id': tid,
-                        })
+                        fps = frame_idx / max(time.time() - start_time, 1e-6)
+                        logging.info(f'[CROSS] {direction.upper()} loc={opt.zone} gender={g} fps={fps:.1f} -> POST')
+                        notifier.post(build_event(direction, g, opt.zone, fps))
             db.log_events(rows)
 
         # Build labels (#ID conf) when tracked, else (head conf)

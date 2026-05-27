@@ -10,3 +10,10 @@ numpy>=1.23,<2
 
 ultralytics>=8.0
 supervision>=0.28
+
+# ONNX runtime — needed by `--lite` on CPU: count_inout_head.py exports the
+# nano model to ONNX for ~2x faster CPU inference. Without these, Ultralytics
+# silently auto-installs them on first run (the "requirements not found,
+# attempting AutoUpdate" message).
+onnx>=1.14
+onnxruntime>=1.15

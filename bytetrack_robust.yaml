@@ -1,0 +1,13 @@
+# Robust ByteTrack config for fast movers (used by --robust-track).
+# Tuned from Ultralytics' default bytetrack.yaml to keep IDs alive through
+# fast motion / brief motion-blur instead of dropping the track.
+# Pair with a lower detection conf (--robust-track sets --conf-thres 0.35)
+# so weak, blurry detections actually reach the tracker's recovery stage.
+
+tracker_type: bytetrack    # ByteTrack baseline
+track_high_thresh: 0.20    # default 0.25 - slightly looser first-stage match
+track_low_thresh: 0.05     # default 0.10 - recover more low-score detections
+new_track_thresh: 0.25     # default 0.25 - unchanged
+track_buffer: 60           # default 30  - keep lost tracks alive twice as long
+match_thresh: 0.9          # default 0.80 - allow association across bigger jumps
+fuse_score: True           # fuse detection score with motion/IoU for matching

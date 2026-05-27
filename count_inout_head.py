@@ -18,6 +18,7 @@ Keys (in viewer window):
 
 import argparse
 import atexit
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -125,6 +126,27 @@ def build_line_zone(p1, p2, anchor):
     )
 
 
+def to_onnx(pt_path, imgsz):
+    """Return a cached ONNX build of `pt_path` at `imgsz`, exporting once if needed.
+
+    On CPU, ONNX + onnxruntime runs ~2x faster than PyTorch at the same input
+    size and accuracy. The export is cached next to the .pt as
+    '<stem>_<imgsz>.onnx'. Falls back to the original .pt if export fails.
+    """
+    onnx_path = Path(pt_path).with_name(f'{Path(pt_path).stem}_{imgsz}.onnx')
+    if onnx_path.exists():
+        print(f'Using cached ONNX: {onnx_path.name}')
+        return str(onnx_path)
+    try:
+        print(f'Exporting {pt_path} -> {onnx_path.name} (one-time, ~10-20s)...')
+        exported = YOLO(pt_path).export(format='onnx', imgsz=imgsz, opset=12, verbose=False)
+        Path(exported).replace(onnx_path)
+        return str(onnx_path)
+    except Exception as e:
+        print(f'ONNX export failed ({type(e).__name__}); using PyTorch model.')
+        return pt_path
+
+
 # -------- main ----------------------------------------------------------------
 
 def main(opt):
@@ -142,11 +164,25 @@ def main(opt):
             opt.img_size = 320
         print(f'Lite mode: {opt.weights} @ img-size {opt.img_size}')
 
-    model = YOLO(opt.weights)
+    # Robust tracking: use the tuned ByteTrack config and let weaker
+    # (motion-blurred) detections through so fast movers keep their ID.
+    tracker_cfg = 'bytetrack.yaml'
+    if opt.robust_track:
+        tracker_cfg = str(Path(__file__).resolve().parent / 'bytetrack_robust.yaml')
+        if opt.conf_thres == 0.60:
+            opt.conf_thres = 0.35
+        print(f'Robust tracking: bytetrack_robust.yaml @ conf {opt.conf_thres}')
+
     device = opt.device
     if device != 'cpu' and not torch.cuda.is_available():
         print('CUDA not available - falling back to CPU (will be slow).')
         device = 'cpu'
+
+    # On CPU, lite mode uses an ONNX build (~2x faster, same accuracy).
+    if opt.lite and device == 'cpu' and opt.weights.endswith('.pt'):
+        opt.weights = to_onnx(opt.weights, opt.img_size)
+
+    model = YOLO(opt.weights, task='detect')
     if device != 'cpu':
         model.to(f'cuda:{device}')
 
@@ -210,7 +246,8 @@ def main(opt):
             conf=opt.conf_thres,
             iou=opt.iou_thres,
             imgsz=opt.img_size,
-            tracker='bytetrack.yaml',
+            device=device,
+            tracker=tracker_cfg,
             verbose=False,
         )[0]
 
@@ -302,6 +339,8 @@ def build_parser():
                    help='hide the camera image; draw boxes/line on a black background')
     p.add_argument('--lite', action='store_true',
                    help='low-spec preset: nano model @ img-size 320 (faster, less accurate)')
+    p.add_argument('--robust-track', action='store_true',
+                   help='harder-to-lose tracking for fast movers (tuned ByteTrack + lower conf)')
     p.add_argument('--anchor', choices=['center', 'bottom', 'top', 'corners'],
                    default='center',
                    help='which bbox point triggers crossing (default: center)')

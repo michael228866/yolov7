@@ -248,13 +248,27 @@ def main(opt):
     # On slow machines the capture buffer backs up with stale frames and the
     # view lags behind reality; keep only the newest frame so it stays live.
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    # Optional exposure overrides (effect depends on the camera/driver).
+    if opt.auto_exposure is not None:
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, opt.auto_exposure)
+        print(f'Auto-exposure set to {opt.auto_exposure}')
+    if opt.exposure is not None:
+        cap.set(cv2.CAP_PROP_EXPOSURE, opt.exposure)
+        print(f'Exposure set to {opt.exposure}')
 
     ok, first = cap.read()
     if not ok:
         raise SystemExit("Cannot read first frame")
     fh, fw = first.shape[:2]
 
-    p1, p2 = parse_line(opt.line, fw, fh) if opt.line else pick_line_interactively(first)
+    if opt.line_y is not None:
+        # Right->left endpoints so top->bottom counts as IN (supervision convention).
+        p1, p2 = (fw - 10, opt.line_y), (10, opt.line_y)
+        print(f'Horizontal line at y={opt.line_y}  (top->bottom = IN)')
+    elif opt.line:
+        p1, p2 = parse_line(opt.line, fw, fh)
+    else:
+        p1, p2 = pick_line_interactively(first)
     if opt.flip:
         p1, p2 = p2, p1
     line_zone = build_line_zone(p1, p2, opt.anchor)
@@ -291,6 +305,10 @@ def main(opt):
         logging.info(f'REST notify ON -> {opt.api_url}  (zone={opt.zone})')
     gender_clf = gender.GenderClassifier() if notifier.enabled else None
 
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)) if opt.clahe else None
+    if clahe is not None:
+        print('CLAHE contrast boost enabled.')
+
     frame_idx = 0
     seen_ids = set()
     start_time = time.time()
@@ -300,6 +318,14 @@ def main(opt):
         if not ok:
             break
         frame_idx += 1
+
+        # Optional CLAHE: boost local contrast on the L channel to recover
+        # detail in washed-out / over-exposed frames before detection.
+        if clahe is not None:
+            lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            l = clahe.apply(l)
+            frame = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
 
         # Inference + tracking (Ultralytics handles ByteTrack via persist=True)
         result = model.track(
@@ -401,9 +427,17 @@ def build_parser():
     p.add_argument('--device', default='0', help="'0' for GPU, 'cpu' for CPU")
     p.add_argument('--line', type=str, default='',
                    help="'x1,y1,x2,y2', or 'h' / 'v'. Empty = click 2 points on first frame.")
+    p.add_argument('--line-y', type=int, default=None,
+                   help='horizontal line at this Y pixel; skips picker. Top->bottom = IN.')
     p.add_argument('--flip', action='store_true', help='swap IN/OUT direction')
     p.add_argument('--blank', action='store_true',
                    help='hide the camera image; draw boxes/line on a black background')
+    p.add_argument('--auto-exposure', type=float, default=None,
+                   help='set CAP_PROP_AUTO_EXPOSURE (DirectShow: 0.25=manual, 0.75=auto; camera-dependent)')
+    p.add_argument('--exposure', type=float, default=None,
+                   help='set CAP_PROP_EXPOSURE (negative = darker; needs manual mode; camera-dependent)')
+    p.add_argument('--clahe', action='store_true',
+                   help='apply CLAHE contrast boost to each frame (helps washed-out / over-exposed video)')
     p.add_argument('--lite', action='store_true',
                    help='low-spec preset: nano model @ img-size 320 (faster, less accurate)')
     p.add_argument('--robust-track', action='store_true',

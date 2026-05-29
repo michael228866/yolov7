@@ -7,5 +7,5 @@ if not exist .venv\Scripts\activate.bat (
     exit /b 1
 )
 call .venv\Scripts\activate.bat
-python count_inout_head.py --lite --api-url https://doorway-counter-api.rd-02f.workers.dev/ingest/live/event --zone neihu-hq%*
+python count_inout_head.py --line-y 350 --lite --api-url https://doorway-counter-api.rd-02f.workers.dev/ingest/live/event --zone neihu-hq%*
 pause
